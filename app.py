@@ -2,19 +2,82 @@ import math
 import joblib
 import pandas as pd
 import streamlit as st
+
+# =========================
+# ページ設定（必ず最初に実行）
+# =========================
+st.set_page_config(
+    page_title="発注支援アプリ",
+    layout="wide",
+)
+
+# =========================
+# CSS：白文字対策
+# =========================
 st.markdown("""
 <style>
-.main {
+.stApp {
     background-color: #F5F7FA;
+    color: #262730;
 }
+
+html, body, [class*="css"] {
+    color: #262730 !important;
+}
+
+h1, h2, h3, h4, h5, h6, p, span, label, div {
+    color: #262730;
+}
+
+section[data-testid="stSidebar"] {
+    background-color: #FFFFFF;
+}
+
 div[data-testid="stMetric"] {
     background-color: white;
     padding: 15px;
     border-radius: 10px;
-    border: 1px solid #eee;
+    border: 1px solid #E5E7EB;
+}
+
+div[data-testid="stMetricLabel"] p {
+    color: #6B7280 !important;
+}
+
+div[data-testid="stMetricValue"] {
+    color: #111827 !important;
+}
+
+input, textarea {
+    color: #111827 !important;
+    background-color: #FFFFFF !important;
+}
+
+div[data-baseweb="select"] * {
+    color: #111827 !important;
+}
+
+div[role="radiogroup"] label,
+div[role="radiogroup"] span {
+    color: #111827 !important;
+}
+
+details {
+    background-color: #FFFFFF;
+    border-radius: 8px;
+    padding: 6px;
+}
+
+button[kind="primary"] {
+    color: white !important;
+}
+
+button[kind="secondary"] {
+    color: #262730 !important;
 }
 </style>
 """, unsafe_allow_html=True)
+
 from sklearn.base import clone
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from src.features import load_sales_data
@@ -40,8 +103,6 @@ WAREHOUSE_ALIASES = {
     "沖縄": "九州物流",
 }
 
-
-st.set_page_config(page_title="発注支援アプリ", layout="wide")
 
 if "page" not in st.session_state:
     st.session_state.page = "main"
@@ -452,7 +513,6 @@ def show_abc_analysis(sales_df):
     st.title("📊 ABC分析")
     st.caption("品番単位で全倉庫の販売実績を合算し、累積構成比80%までをA、90%までをB、残りをCに分類します。")
 
-    # ★ 倉庫を無視して品番単位で集計
     abc = (
         sales_df.groupby("品番", as_index=False)["数量"]
         .sum()
@@ -461,11 +521,9 @@ def show_abc_analysis(sales_df):
 
     total = abc["数量"].sum()
 
-    # 構成比・累積
     abc["構成比"] = abc["数量"] / total
     abc["累積構成比"] = abc["構成比"].cumsum()
 
-    # ABC判定
     def rank(x):
         if x <= 0.8:
             return "A"
@@ -476,10 +534,8 @@ def show_abc_analysis(sales_df):
 
     abc["ABCランク"] = abc["累積構成比"].apply(rank)
 
-    # 表示
     st.dataframe(abc, use_container_width=True)
 
-    # CSV出力
     csv = abc.to_csv(index=False).encode("utf-8-sig")
     st.download_button(
         "ABC分析結果CSVをダウンロード",
@@ -488,11 +544,9 @@ def show_abc_analysis(sales_df):
         "text/csv"
     )
 
-    # 上位表示（見やすさ用）
     st.subheader("上位20品番")
     st.bar_chart(abc.head(20).set_index("品番")["数量"])
 
-    # 戻る
     if st.button("メイン画面に戻る"):
         st.session_state.page = "main"
         st.rerun()
@@ -503,7 +557,7 @@ def highlight_order(row):
     if pd.notna(qty) and qty > 0:
         return ["background-color: #ffe5e5"] * len(row)
     return [""] * len(row)
-# ===== モデル評価用 =====
+
 
 def make_training_dataset_for_eval(sales_df):
     df = sales_df.copy()
@@ -519,7 +573,7 @@ def make_training_dataset_for_eval(sales_df):
 
     df = df.dropna()
 
-    X = df[["倉庫名","品番","month_num","year","lag1","lag2","lag3","rolling_mean_3"]]
+    X = df[["倉庫名", "品番", "month_num", "year", "lag1", "lag2", "lag3", "rolling_mean_3"]]
     y = df["数量"]
 
     return df, X, y
@@ -529,7 +583,6 @@ def evaluate_all_items(model, sales_df, test_months=6):
     df = sales_df.copy()
     df["月"] = pd.to_datetime(df["月"])
 
-    # ★ Aランク品だけに絞る
     abc = (
         df.groupby("品番", as_index=False)["数量"]
         .sum()
@@ -649,7 +702,6 @@ if st.sidebar.button("📊 ABC分析"):
     st.session_state.page = "abc"
     st.rerun()
 
-# CSV Upload
 st.sidebar.markdown("---")
 st.sidebar.header("📁 CSVアップロード")
 stock_file = st.sidebar.file_uploader("現在庫CSV", type=["csv"])
@@ -727,7 +779,10 @@ if st.session_state.page == "future":
 
     c1, c2, c3 = st.columns(3)
     c1.metric("次回発注必要品番数", f"{len(need_df):,}")
-    c2.metric("次回発注予定数量合計", f"{pd.to_numeric(result_df['次回発注予定数量'], errors='coerce').fillna(0).sum():,.0f}")
+    c2.metric(
+        "次回発注予定数量合計",
+        f"{pd.to_numeric(result_df['次回発注予定数量'], errors='coerce').fillna(0).sum():,.0f}"
+    )
     c3.metric("予測不可件数", f"{(result_df['エラー'] != '').sum():,}")
 
     st.dataframe(result_df, use_container_width=True)
@@ -753,7 +808,7 @@ if st.session_state.page == "future":
 
     st.stop()
 
-# Main dashboard
+
 total_items = stock_df["品番"].nunique()
 total_stock = stock_df["現在庫"].sum()
 total_incoming = stock_df["有効発注残数"].sum()
@@ -830,8 +885,6 @@ with right:
 st.markdown("---")
 st.header("③ 一括予測")
 
-
-
 bulk_type = st.radio("一括予測フィルター", ["全件", "かぶせ", "平"], horizontal=True)
 bulk_search = st.text_input("一括 品番検索", "")
 
@@ -906,11 +959,6 @@ if st.button("一括予測を実行", type="primary"):
                 "text/csv",
             )
 
-
-
-# =========================
-# ④ モデル評価
-# =========================
 
 st.markdown("---")
 st.header("④ モデル評価")
